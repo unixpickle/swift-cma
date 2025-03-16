@@ -40,8 +40,8 @@ public class CMA {
   private let sigmaDamping: Float
   private let expectedNorm: Float
 
-  private var mean: Tensor  // [N]
-  private var sigma: Tensor  // []
+  public var mean: Tensor  // [N]
+  public var sigma: Tensor  // []
   private var pathC: Tensor  // [N]
   private var pathSigma: Tensor  // [N]
   private var basis: Tensor  // [N x N]
@@ -97,7 +97,7 @@ public class CMA {
 
   @recordCaller private func _sample() -> Tensor {
     let noise = Tensor(randn: [population, dimCount])
-    return mean + sigma * (basis &* (eigVals * noise))
+    return mean + sigma * ((eigVals * noise) &* basis.t())
   }
 
   @recordCaller private func _update(samples: Tensor, scores: Tensor) {
@@ -118,7 +118,10 @@ public class CMA {
     let pathSigmaTerm1 = (1 - timeConstantSigma) * pathSigma
     let pathSigmaTerm2 = sqrt(
       timeConstantSigma * (Float(2.0) - timeConstantSigma) * varianceEffectiveness)
-    let pathSigmaTerm3 = covarianceInvSqrt &* (mean - oldMean) / sigma
+    let pathSigmaTerm3 = Backtrace.record {
+      (covarianceInvSqrt &* (mean - oldMean)[..., NewAxis()] / sigma).squeeze(
+        axis: 1)
+    }
     pathSigma = pathSigmaTerm1 + pathSigmaTerm2 * pathSigmaTerm3
     let pathSigmaNorm = pathSigma.pow(2).sum().sqrt()
 
@@ -135,7 +138,9 @@ public class CMA {
     let cTerm2 =
       lrRank1
       * (Tensor.outer(pathC, pathC) + (1 - hSig) * timeConstantC * (2 - timeConstantC) * covariance)
-    let cTerm3 = lrRankRecombination * (artmp &* Tensor.diagonal(weights) &* artmp.t())
+    let cTerm3 = Backtrace.record {
+      lrRankRecombination * (artmp.t() &* Tensor.diagonal(weights) &* artmp)
+    }
     covariance = cTerm1 + cTerm2 + cTerm3
 
     sigma = sigma * ((timeConstantSigma / sigmaDamping) * (pathSigmaNorm / expectedNorm - 1)).exp()
