@@ -16,6 +16,8 @@ public class CMA {
   }
 
   public struct State: Codable {
+    public let mean: TensorState
+    public let sigma: TensorState
     public let pathC: TensorState
     public let pathSigma: TensorState
     public let basis: TensorState
@@ -158,5 +160,45 @@ public class CMA {
       basis = u
       covarianceInvSqrt = basis &* Tensor.diagonal(1 / eigVals) &* basis.t()
     }
+  }
+
+  public var state: TracedBlock<State> {
+    let mean = mean
+    let sigma = sigma
+    let pathC = pathC
+    let pathSigma = pathSigma
+    let basis = basis
+    let eigVals = eigVals
+    let covariance = covariance
+    let covarianceInvSqrt = covarianceInvSqrt
+    let evalCount = evalCount
+    let evalCountAtLastEig = evalCountAtLastEig
+    return TracedBlock {
+      State(
+        mean: try await mean.state(),
+        sigma: try await sigma.state(),
+        pathC: try await pathC.state(),
+        pathSigma: try await pathSigma.state(),
+        basis: try await basis.state(),
+        eigVals: try await eigVals.state(),
+        covariance: try await covariance.state(),
+        covarianceInvSqrt: try await covarianceInvSqrt.state(),
+        evalCount: evalCount,
+        evalCountAtLastEig: evalCountAtLastEig
+      )
+    }
+  }
+
+  @recordCaller private func _loadState(_ state: State) throws {
+    mean = Tensor(state: state.mean)
+    sigma = Tensor(state: state.sigma)
+    pathC = Tensor(state: state.pathC)
+    pathSigma = Tensor(state: state.pathSigma)
+    basis = Tensor(state: state.basis)
+    eigVals = Tensor(state: state.eigVals)
+    covariance = Tensor(state: state.covariance)
+    covarianceInvSqrt = Tensor(state: state.covarianceInvSqrt)
+    evalCount = state.evalCount
+    evalCountAtLastEig = state.evalCountAtLastEig
   }
 }
