@@ -59,6 +59,7 @@ public class CMA {
     sigma = Tensor(data: [config.stepSize], shape: [])
 
     dimCount = initialValue.shape[0]
+    let N = Float(dimCount)
     self.config = config
     population = config.population ?? 4 + Int(floor(3 * log(Double(dimCount))))
     recombinationCount = max(
@@ -71,23 +72,23 @@ public class CMA {
 
     varianceEffectiveness = pow(w.reduce(0.0, +), 2) / w.map { pow($0, 2) }.reduce(0.0, +)
     timeConstantC =
-      (4 + varianceEffectiveness / Float(population))
-      / (Float(population) + 4 + 2 * varianceEffectiveness / Float(population))
+      (4 + varianceEffectiveness / N)
+      / (N + 4 + 2 * varianceEffectiveness / N)
     timeConstantSigma =
-      (varianceEffectiveness + 2) / (Float(population) + varianceEffectiveness + 5)
-    lrRank1 = 2.0 / (pow(Float(population) + 1.3, 2) + varianceEffectiveness)
+      (varianceEffectiveness + 2) / (N + varianceEffectiveness + 5)
+    lrRank1 = 2.0 / (pow(N + 1.3, 2) + varianceEffectiveness)
     lrRankRecombination = min(
       1 - lrRank1,
       2 * (varianceEffectiveness - 2.0 + 1.0 / varianceEffectiveness)
-        / (pow(Float(population) + 2.0, 2) + varianceEffectiveness)
+        / (pow(N + 2.0, 2) + varianceEffectiveness)
     )
     sigmaDamping =
-      1 + 2 * max(0.0, sqrt((varianceEffectiveness - 1) / Float(population + 1)) - 1)
+      1 + 2 * max(0.0, sqrt((varianceEffectiveness - 1) / (N + 1)) - 1)
       + timeConstantSigma
 
     expectedNorm =
-      sqrt(Float(population))
-      * (1 - 1.0 / Float(4 * population) + 1.0 / (21.0 * pow(Float(population), 2)))
+      sqrt(N)
+      * (1 - 1.0 / (4.0 * N) + 1.0 / (21.0 * pow(N, 2)))
 
     pathC = Tensor(zeros: [dimCount])
     pathSigma = pathC
@@ -111,6 +112,7 @@ public class CMA {
 
     evalCount += samples.shape[0]
 
+    let N = Float(dimCount)
     let indices = scores.argsort(axis: 0)[..<recombinationCount]
     let chosenSamples = samples.gather(axis: 0, indices: indices)
 
@@ -127,7 +129,7 @@ public class CMA {
     pathSigma = pathSigmaTerm1 + pathSigmaTerm2 * pathSigmaTerm3
     let pathSigmaNorm = pathSigma.pow(2).sum().sqrt()
 
-    let threshold = 1.4 + 2 / Float(population + 1)
+    let threshold = 1.4 + 2 / (N + 1)
     let hSigDelta = pow(1 - timeConstantSigma, 2 * Float(evalCount) / Float(population))
     let hSig: Tensor = ((pathSigmaNorm / sqrt(Float(1.0) - hSigDelta)) / expectedNorm < threshold)
       .cast(.float32)
@@ -147,8 +149,8 @@ public class CMA {
 
     sigma = sigma * ((timeConstantSigma / sigmaDamping) * (pathSigmaNorm / expectedNorm - 1)).exp()
 
-    if Float(evalCount - evalCountAtLastEig) > Float(recombinationCount)
-      / (lrRank1 + lrRankRecombination) / Float(population) / 10
+    if Float(evalCount - evalCountAtLastEig) > Float(population)
+      / (lrRank1 + lrRankRecombination) / N / 10.0
     {
       evalCountAtLastEig = evalCount
       let (u, s, _) = covariance.svd()
