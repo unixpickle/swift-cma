@@ -7,11 +7,16 @@ public class CMA {
     public let stepSize: Float
     public let population: Int?
     public let recombinationFrac: Float
+    public let samplesPerEig: Int?
 
-    public init(stepSize: Float = 0.5, population: Int? = nil, recombinationFrac: Float = 0.5) {
+    public init(
+      stepSize: Float = 0.5, population: Int? = nil, recombinationFrac: Float = 0.5,
+      samplesPerEig: Int? = nil
+    ) {
       self.stepSize = stepSize
       self.population = population
       self.recombinationFrac = recombinationFrac
+      self.samplesPerEig = samplesPerEig
     }
   }
 
@@ -41,6 +46,7 @@ public class CMA {
   private let lrRankRecombination: Float
   private let sigmaDamping: Float
   private let expectedNorm: Float
+  private let samplesPerEig: Int
 
   public var mean: Tensor  // [N]
   public var sigma: Tensor  // []
@@ -53,6 +59,12 @@ public class CMA {
 
   private var evalCount: Int = 0
   private var evalCountAtLastEig: Int = 0
+
+  public var covarianceCondition: Tensor {
+    let lowest = eigVals.min()
+    let highest = eigVals.max()
+    return (highest / lowest).pow(2)
+  }
 
   public init(config: Config, initialValue: Tensor) {
     mean = initialValue
@@ -86,9 +98,10 @@ public class CMA {
       1 + 2 * max(0.0, sqrt((varianceEffectiveness - 1) / (N + 1)) - 1)
       + timeConstantSigma
 
-    expectedNorm =
-      sqrt(N)
-      * (1 - 1.0 / (4.0 * N) + 1.0 / (21.0 * pow(N, 2)))
+    expectedNorm = sqrt(N) * (1 - 1.0 / (4.0 * N) + 1.0 / (21.0 * pow(N, 2)))
+
+    samplesPerEig =
+      config.samplesPerEig ?? Int(Float(population) / (lrRank1 + lrRankRecombination) / N / 10.0)
 
     pathC = Tensor(zeros: [dimCount])
     pathSigma = pathC
@@ -149,9 +162,7 @@ public class CMA {
 
     sigma = sigma * ((timeConstantSigma / sigmaDamping) * (pathSigmaNorm / expectedNorm - 1)).exp()
 
-    if Float(evalCount - evalCountAtLastEig) > Float(population)
-      / (lrRank1 + lrRankRecombination) / N / 10.0
-    {
+    if evalCount - evalCountAtLastEig > samplesPerEig {
       evalCountAtLastEig = evalCount
       let (u, s, _) = covariance.svd()
 
